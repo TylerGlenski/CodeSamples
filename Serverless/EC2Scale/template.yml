@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: Offlines EC2 Instances.
+Parameters: 
+  OnlineCron:
+    Type: String
+    Description: CRON Expression for Lambda Online-Ec2-Instances
+    Default: cron(10 9 ? * MON-FRI *) # every tuesday-friday @ 9:10am UTC  (4:10amCST)
+  OfflineCron:
+    Type: String
+    Description: CRON Expression for Lambda Offline-EC2-Instance
+    Default: cron(10 3 ? * TUE-SAT *) # every tuesday-friday @ 0310am UTC (22:10 CST)
+  DNSCron:
+    Type: String
+    Description: CRON Expression for RemoveDNS
+    Default: cron(10 2 ? * TUE-SAT *) # every tuesday-friday @ 0110 UTC  (8:10pm CST)
+  Route53Record:
+    Type: String
+    Description: Route53 record to add ec2 IPs to
+    Default: "dns.mywebsite.com" #paste in your zone id
+  ZoneId:
+    Type: String
+    Description: Route53 zone id to create dns listing for ec2 instances
+    Default: "sdafgf" # paste in your zone id
+
+Globals: # global resource params for all Functions
+  Function:
+    Runtime: python3.6
+    MemorySize: 128
+    Environment:
+        Variables:
+        # logging levels
+          CRITICAL: 50
+          ERROR: 40
+          WARNING: 30
+          INFO: 20
+          DEBUG: 10
+          NOTSET: 0 
+          ZONE_ID: !Ref ZoneId
+          RECORD_NAME: !Ref Route53Record
+Resources:
+  # Functions
+  OfflineEC2:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: OfflineEC2/
+      Handler: offline.lambda_handler
+      Description: Offlines EC2 instances
+      Timeout: 60
+      Events:
+        ScheduledRule:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref OfflineCron
+      Policies:
+        - Statement:
+          - Sid: EC2OfflineInstance
+            Effect: Allow
+            Action:
+            - "ec2:DescribeInstances"
+            - "ec2:StopInstances"
+            Resource: '*'
+        - Statement:
+          - Sid: EC2Logs
+            Effect: Allow
+            Action: 
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: '*'
+  OnlineEC2:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: OnlineEC2/
+      Handler: online.lambda_handler
+      Description: Onlines offline App Servers
+      Timeout: 60
+      Events:
+        ScheduledRule:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref OnlineCron
+      Policies:
+        - Statement:
+          - Sid: EC2Logs
+            Effect: Allow
+            Action: 
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Resource: '*'
+        - Statement:
+          - Sid: EC2OnlineInstance
+            Effect: Allow
+            Action:
+            - "ec2:DescribeInstances"
+            - "ec2:StartInstances"
+            Resource: '*'
+        - Statement:
+          - Sid: Route53RemoveDNS
+            Effect: Allow
+            Action:
+            - "route53:ChangeResourceRecordSets"
+            Resource: '*'
+  RemoveDNS:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      CodeUri: RemoveDNS/
+      Handler: dns.lambda_handler
+      Description: Removes App Servers from DNS listing
+      Timeout: 60
+      Events:
+        ScheduledRule:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref DNSCron
+      Policies: 
+        - Statement:
+          - Sid: Route53RemoveDNS
+            Effect: Allow
+            Action:
+            - "route53:ChangeResourceRecordSets"
+            Resource: '*'
+        - Statement:
+          - Sid: EC2Describe
+            Effect: Allow
+            Action:
+            - "ec2:DescribeInstances"
+            Resource: '*'
+  

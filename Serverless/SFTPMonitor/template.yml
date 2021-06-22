@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: lambda sftp test1.
+Parameters: 
+  SecretARN:
+    Type: String
+    Description: ARN to access aws secrets
+  SecretName:
+    Type: String
+    Description: Name of aws secret
+  SecurityGroupId:
+    Type: String
+    Description: Security Group id for lambda SG
+  Subnet1:
+    Type: String
+    Description: Subnet 1 for lambda to live on
+  Subnet2:
+    Type: String
+    Description: Subnet 2 for lambda to live on
+  Region:
+    Type: String
+    Description: Region for lambda
+Resources:
+  CheckSFTP:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: app_folder/
+      Handler: monitoring-sftp.lambda_handler
+      Runtime: python3.8 
+      Description: sftp monitoring lambda function
+      MemorySize: 128
+      Timeout: 20
+      Environment:
+        Variables:
+          # Logging levels Default is CRITICAL
+          CRITICAL: 50
+          ERROR: 40
+          WARNING: 30
+          INFO: 20
+          DEBUG: 10
+          NOTSET: 0
+          # secrets manager variables
+          REGION: !Ref Region
+          SECRET_NAME: !Ref SecretName
+      Events:
+        CheckSFTPEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 hour)
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupId
+        SubnetIds:
+          - !Ref Subnet1
+          - !Ref Subnet2
+      Policies: 
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref SecretARN
+        - VPCAccessPolicy: {}
+                  
